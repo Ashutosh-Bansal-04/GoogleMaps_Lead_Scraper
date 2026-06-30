@@ -5,3 +5,7 @@ flask
 requests
 beautifulsoup4
 lxml
+flask-cors
+from flask_cors import CORS
+app = Flask(__name__)
+CORS(app, origins=["https://your-frontend.vercel.app"])

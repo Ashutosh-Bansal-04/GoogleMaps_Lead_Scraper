@@ -3,6 +3,10 @@ import os
 import main
 import config
 from selenium.common.exceptions import TimeoutException
+from flask_cors import CORS
+app = Flask(__name__)
+CORS(app, origins=["https://your-frontend.vercel.app"])
+
 
 app = Flask(__name__)
 # Ensure output directory exists for downloads
