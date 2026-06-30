@@ -1,0 +1,7 @@
+selenium
+webdriver-manager
+gunicorn
+flask
+requests
+beautifulsoup4
+lxml
