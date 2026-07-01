@@ -16,34 +16,120 @@ import config
 class MapsScraper:
     def __init__(self):
         options = webdriver.ChromeOptions()
-        # Stealth options
+        
+        # Stealth options — hide automation signals
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
-        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+        
+        # Container/Server options (always apply for stability)
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--lang=en-US")
         
         # Headless mode for deployment
         if os.environ.get("HEADLESS") == "true":
             options.add_argument("--headless=new")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
             options.add_argument("--remote-debugging-port=9222")
-            options.add_argument("--window-size=1280,720")
-            options.add_argument("--disable-extensions")
-            options.add_argument("--disable-infobars")
-            options.add_argument("--disable-popup-blocking")
-            options.add_argument("--blink-settings=imagesEnabled=false") # Disable images for speed/memory
+            options.add_argument("--blink-settings=imagesEnabled=false")
+            # Use /tmp for user data on containers to avoid /dev/shm issues
+            options.add_argument("--user-data-dir=/tmp/chrome-user-data")
+            options.add_argument("--disk-cache-dir=/tmp/chrome-cache")
         
         service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=options)
         self.wait = WebDriverWait(self.driver, 20)
         self._search_success = False
 
+    def _dismiss_consent(self):
+        """Dismiss Google cookie consent page that appears on data center IPs."""
+        try:
+            # Look for common consent button texts
+            consent_selectors = [
+                # "Accept all" button (English)
+                '//button[contains(text(), "Accept all")]',
+                '//button[contains(text(), "Accept")]',
+                '//button[contains(text(), "Reject all")]',
+                # Consent form buttons by aria-label
+                '//button[@aria-label="Accept all"]',
+                '//button[@aria-label="Accept cookies"]',
+                # Google's consent form specific
+                '//form[@action="https://consent.google.com/save"]//button',
+                # Material-design styled buttons
+                '//button[contains(@class, "tHlp8d")]',
+            ]
+            
+            for xpath in consent_selectors:
+                try:
+                    btn = self.driver.find_element(By.XPATH, xpath)
+                    if btn.is_displayed():
+                        btn.click()
+                        print("  [Consent] Dismissed cookie consent banner")
+                        time.sleep(2)
+                        return True
+                except:
+                    continue
+            
+            # Also try CSS selectors for consent
+            css_selectors = [
+                'button#L2AGLb',           # Google "I agree" button
+                'button[jsname="b3VHJd"]', # Another Google consent button
+                '[aria-label="Accept all"]',
+            ]
+            for selector in css_selectors:
+                try:
+                    btn = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    if btn.is_displayed():
+                        btn.click()
+                        print("  [Consent] Dismissed cookie consent banner (CSS)")
+                        time.sleep(2)
+                        return True
+                except:
+                    continue
+                    
+        except Exception as e:
+            print(f"  [Consent] No consent banner found or error: {e}")
+        
+        return False
+
     def search(self, query):
-        self.driver.get('https://www.google.com/maps?hl=en') # Force English to standardize IDs/Labels if possible
+        # Use consent-bypass parameters
+        maps_url = 'https://www.google.com/maps?hl=en&consent=1'
+        print(f"  [Nav] Opening Google Maps...")
+        self.driver.get(maps_url)
         time.sleep(5)
         
+        # Try to dismiss consent banner if present
+        self._dismiss_consent()
+        time.sleep(1)
+        
+        # If we got redirected to consent page, try direct Maps search URL instead
+        current_url = self.driver.current_url
+        if 'consent' in current_url.lower() or 'accounts.google' in current_url.lower():
+            print("  [Nav] Consent redirect detected, trying direct search URL...")
+            # Use the direct Maps search URL which sometimes bypasses consent
+            direct_url = f'https://www.google.com/maps/search/{query.replace(" ", "+")}?hl=en'
+            self.driver.get(direct_url)
+            time.sleep(5)
+            self._dismiss_consent()
+            time.sleep(2)
+            
+            # Check if results loaded directly
+            try:
+                self.driver.find_element(By.CSS_SELECTOR, 'div[role="feed"]')
+                print(f"  [Nav] Direct search worked! Results loaded for: {query}")
+                self._search_success = True
+                return
+            except:
+                pass
+        
+        # Find and use the search box
         selectors = [
             (By.ID, "searchboxinput"),
             (By.NAME, "q"),
@@ -58,36 +144,52 @@ class MapsScraper:
                 element = self.driver.find_element(by, value)
                 if element.is_displayed():
                     search_box_input = element
-                    print(f"Found search box using {by}={value}")
+                    print(f"  [Search] Found search box using {by}={value}")
                     break
             except:
                 continue
                 
         if not search_box_input:
-            print("Could not find search box. Saving debug info to debug_screenshot.png and debug_page.html")
+            # Last resort: try direct search URL
+            print("  [Search] Search box not found. Trying direct URL search...")
+            direct_url = f'https://www.google.com/maps/search/{query.replace(" ", "+")}?hl=en'
+            self.driver.get(direct_url)
+            time.sleep(8)
+            self._dismiss_consent()
+            time.sleep(2)
+            
             try:
-                self.driver.save_screenshot("debug_screenshot.png")
-                with open("debug_page.html", "w", encoding="utf-8") as f:
-                    f.write(self.driver.page_source)
-            except Exception as e:
-                print(f"Failed to save debug info: {e}")
-            self._search_success = False
-            return
+                self.driver.find_element(By.CSS_SELECTOR, 'div[role="feed"]')
+                print(f"  [Search] Direct URL search succeeded for: {query}")
+                self._search_success = True
+                return
+            except:
+                # Save debug info
+                print("  [Search] FAILED - Could not load results. Saving debug info...")
+                try:
+                    self.driver.save_screenshot("output/debug_screenshot.png")
+                    with open("output/debug_page.html", "w", encoding="utf-8") as f:
+                        f.write(self.driver.page_source)
+                    print(f"  [Debug] Screenshot saved. Current URL: {self.driver.current_url}")
+                    print(f"  [Debug] Page title: {self.driver.title}")
+                except Exception as e:
+                    print(f"  [Debug] Failed to save debug info: {e}")
+                self._search_success = False
+                return
 
         try:
             search_box_input.clear()
             search_box_input.send_keys(query)
-            # small delay
             time.sleep(1)
             search_box_input.send_keys(Keys.ENTER)
-            print(f"Searching for: {query}")
+            print(f"  [Search] Searching for: {query}")
             self._search_success = True
         except Exception as e:
-            print(f"Error interacting with search box: {e}")
+            print(f"  [Search] Error interacting with search box: {e}")
             self._search_success = False
             return
             
-        time.sleep(random.uniform(3, 5))
+        time.sleep(random.uniform(4, 6))
 
     def get_leads(self):
         """

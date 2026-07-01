@@ -70,6 +70,18 @@ def download_file(filename):
     except FileNotFoundError:
         return "File not found", 404
 
+@app.route('/debug')
+def debug_info():
+    """Shows debug screenshot from the last failed scrape attempt."""
+    screenshot_path = os.path.join(OUTPUT_DIR, "debug_screenshot.png")
+    if os.path.exists(screenshot_path):
+        return send_from_directory(OUTPUT_DIR, "debug_screenshot.png")
+    return "No debug screenshot available. Run a scrape first.", 404
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "ok", "message": "Server is running"})
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5002))
     app.run(debug=True, host='0.0.0.0', port=port)
