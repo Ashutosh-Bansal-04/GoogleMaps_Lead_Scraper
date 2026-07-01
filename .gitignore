@@ -12,7 +12,7 @@ venv/
 env/
 .env
 
-# Output
+# Output (generated CSV files)
 output/
 *.csv
 
@@ -33,10 +33,3 @@ desktop.ini
 
 # Logs
 *.log
-
-# Vercel (not used - deploy on Render)
-.vercel/
-
-# Node (if any frontend build)
-node_modules/
-frontend/
