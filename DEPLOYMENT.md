@@ -1,83 +1,146 @@
-# Deployment Guide
+# Deployment Guide — Host on Render (Free)
 
-This guide explains how to deploy the Maps Lead Scraper to a cloud platform and how to run it locally.
+## Why Render and NOT Vercel?
 
-## Option 1: Render (Recommended for Free Tier)
-Render offers a free tier for web services and makes it easy to deploy Dockerized apps.
+This app uses **Selenium + Chrome** to scrape Google Maps. Vercel is serverless (no browser, 10s timeout) — it physically cannot run this app. **Render** supports Docker (free tier), which lets you run Chrome in a container.
 
-1.  **Push to GitHub**:
-    - Initialize a git repo (if you haven't): `git init`
-    - Add files: `git add .`
-    - Commit: `git commit -m "Initial commit"`
-    - Push to a new GitHub repository.
+| Feature | Vercel | Render |
+|---------|--------|--------|
+| Docker support | No | Yes |
+| Chrome/Selenium | No | Yes |
+| Request timeout | 10s (free) / 60s (pro) | 600s+ |
+| Free tier | Yes (but useless for this) | Yes |
+| Custom domain | Yes | Yes |
 
-2.  **Create New Web Service on Render**:
-    - Go to [dashboard.render.com](https://dashboard.render.com/).
-    - Click **New +** -> **Web Service**.
-    - Connect your GitHub repository.
+---
 
-3.  **Configure**:
-    - **Name**: `maps-scraper` (or similar)
-    - **Runtime**: `Docker`
-    - **Region**: Choose one close to you.
-    - **Instance Type**: **Free** (Note: Free tier spins down after inactivity).
+## Step 1: Push to GitHub
 
-4.  **Environment Variables**:
-    - Add the following variables under "Environment":
-        - `HEADLESS`: `true`
-        - `PYTHONUNBUFFERED`: `1`
+Open a terminal in `D:\GoogleMaps_Lead_Scraper` and run:
 
-5.  **Deploy**:
-    - Click **Create Web Service**.
-    - Render will automatically build the Docker image. This may take 5-10 minutes as it installs Chrome and dependencies.
+```bash
+# Initialize git (skip if already done)
+git init
 
-## Option 2: Railway
-Railway is another excellent option with a slightly different pricing model (trial credits).
+# Add all files
+git add .
 
-1.  **Deploy from GitHub**:
-    - Go to [railway.app](https://railway.app/).
-    - Click **New Project** -> **Deploy from GitHub repo**.
-    - Select your repository.
-2.  **Variables**:
-    - Go to the **Variables** tab.
-    - Add `HEADLESS=true`.
-3.  **Domain**:
-    - Railway automatically generates a domain for you.
+# Commit
+git commit -m "Initial commit - Maps Lead Scraper"
 
-## Local Execution (Testing)
+# Create a repo on GitHub (go to github.com/new)
+# Then link it:
+git remote add origin https://github.com/YOUR_USERNAME/GoogleMaps-Lead-Scraper.git
 
-You can run the scraper locally without Docker if you have Python installed.
+# Push
+git branch -M main
+git push -u origin main
+```
 
-### Prerequisites
-- Python 3.9+
-- Google Chrome installed
+---
 
-### Setup
-1.  **Install Dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
+## Step 2: Deploy on Render
 
-2.  **Run the Web Interface**:
-    ```bash
-    python app.py
-    ```
-    Then open [http://127.0.0.1:5002](http://127.0.0.1:5002) in your browser.
+### 2.1 — Create Render Account
+1. Go to [render.com](https://render.com) and sign up (free)
+2. Connect your GitHub account
 
-3.  **Run via CLI (Command Line)**:
-    You can run the scraper directly from the terminal.
-    ```bash
-    # Basic usage
-    python main.py --city "New York" --query "Dentist"
-    
-    # Limit number of leads (Good for testing)
-    python main.py --city "New York" --query "Dentist" --max-leads 3
-    ```
+### 2.2 — Create a New Web Service
+1. Click **"New +"** → **"Web Service"**
+2. Select **"Build and deploy from a Git repository"**
+3. Connect your `GoogleMaps-Lead-Scraper` repo
+4. Configure the service:
 
-## Notes & Troubleshooting
-- **Performance**: Scraping uses a significant amount of RAM. On free tiers (like Render's 512MB RAM), the app might crash if you try to scrape too many leads or if Chrome consumes too much memory.
-    - **Solution**: Keep default `MAX_LEADS` low (e.g., 20) or use the `--max-leads` argument to limit it.
-- **Storage**: The generated CSV files are stored in the container's ephemeral file system on platforms like Render. They will disappear if the app restarts.
-    - **Solution**: Download your leads immediately after scraping.
-- **Timeouts**: Cloud providers often have timeout limits (Render Free Tier: 100 seconds for HTTP requests).
-    - **Solution**: The scraping process is blocking. For large scrapes, you might hit a timeout error 504. The scraping *might* continue in the background, but the web request will fail. For production use, this should be refactored to use a task queue (like Celery/Redis).
+| Setting | Value |
+|---------|-------|
+| **Name** | `maps-lead-scraper` |
+| **Region** | Pick closest to you |
+| **Runtime** | **Docker** |
+| **Instance Type** | **Free** |
+
+5. Click **"Deploy Web Service"**
+
+### 2.3 — Wait for Build
+- The first build takes **5-10 minutes** (it downloads Chrome + Python packages)
+- You'll see a live build log
+- When it says **"Your service is live"**, you're done!
+
+### 2.4 — Access Your App
+Your app will be live at:
+```
+https://maps-lead-scraper.onrender.com
+```
+You can access this URL from **any device** (phone, tablet, laptop) — anywhere in the world.
+
+---
+
+## Step 3: Use the App
+
+1. Open `https://maps-lead-scraper.onrender.com` on any device
+2. Enter a city (e.g., "New York")
+3. Enter a search query (e.g., "Coffee shops")
+4. Set max leads (start with 5 for testing)
+5. Click **Start Scraping**
+6. Wait for it to finish (takes ~1 min per lead)
+7. Click **Download CSV** to get your leads file
+
+---
+
+## Important Notes
+
+### Free Tier Limitations
+- Render's free tier **spins down after 15 min of inactivity**
+- First request after sleep takes ~30s to wake up
+- For always-on, upgrade to Render's **Starter plan** ($7/month)
+
+### Scraping Speed
+- Each lead takes ~8-15 seconds (click → extract → go back)
+- 5 leads ≈ 1-2 minutes
+- 20 leads ≈ 5-8 minutes
+- Website enrichment adds ~2-3 seconds per lead
+
+### If Scraping Fails on Render
+Google may block headless Chrome in some data centers. If you get 0 results:
+1. Try a different Render region
+2. Or run locally: `python app.py` and use from your own PC
+
+---
+
+## Updating the App
+
+After making code changes:
+
+```bash
+git add .
+git commit -m "Your change description"
+git push
+```
+
+Render auto-deploys on every push to `main`.
+
+---
+
+## Project Structure
+
+```
+GoogleMaps_Lead_Scraper/
+├── app.py                  # Flask web server
+├── main.py                 # Scraper orchestrator
+├── config.py               # Settings (queries, delays, etc.)
+├── Dockerfile              # Container config for Render
+├── requirements.txt        # Python dependencies
+├── scraper/
+│   ├── __init__.py
+│   ├── maps_scraper.py     # Selenium Google Maps scraper
+│   └── website_scraper.py  # BeautifulSoup website enricher
+├── utils/
+│   ├── __init__.py
+│   ├── file_manager.py     # CSV export
+│   └── quality_score.py    # Website quality analyzer
+├── templates/
+│   └── index.html          # Web UI template
+├── static/
+│   ├── style.css           # UI styling
+│   └── script.js           # Frontend logic
+└── output/                 # Generated CSV files
+```

@@ -161,6 +161,18 @@ class MapsScraper:
             try:
                 print(f"Processing: {target_name}")
                 target_item.click()
+                
+                # Wait for the detail panel to fully load
+                # The detail panel is loaded when the address or phone button appears
+                try:
+                    WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, 
+                            'button[data-item-id="address"], button[data-item-id^="phone"], a[data-item-id="authority"]'))
+                    )
+                except:
+                    pass  # Continue anyway, some businesses may not have these
+                
+                # Extra delay to let all detail fields render
                 time.sleep(random.uniform(config.ACTION_DELAY_MIN, config.ACTION_DELAY_MAX))
                 
                 details = self.extract_details()
@@ -169,6 +181,7 @@ class MapsScraper:
                 leads.append(details)
                 processed_names.add(target_name)
                 print(f"  [OK] Scraped lead {len(leads)}/{config.MAX_LEADS_PER_RUN}: {target_name}")
+                print(f"       Phone: {details.get('Phone', 'N/A')} | Website: {'Yes' if details.get('Website') else 'No'} | Rating: {details.get('Rating', 'N/A')}")
                 
             except StaleElementReferenceException:
                 print(f"Stale element for '{target_name}', skipping.")
@@ -179,7 +192,8 @@ class MapsScraper:
 
             # === NAVIGATE BACK to the results list ===
             self._go_back_to_results()
-            time.sleep(random.uniform(1.5, 2.5))
+            # Wait for the results list to fully re-render
+            time.sleep(random.uniform(2, 3.5))
 
         return leads
 

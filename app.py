@@ -2,13 +2,9 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import main
 import config
-from selenium.common.exceptions import TimeoutException
-from flask_cors import CORS
-app = Flask(__name__)
-CORS(app, origins=["https://your-frontend.vercel.app"])
-
 
 app = Flask(__name__)
+
 # Ensure output directory exists for downloads
 OUTPUT_DIR = "output"
 if not os.path.exists(OUTPUT_DIR):
@@ -36,8 +32,7 @@ def scrape():
 
     query_list = [query] if query else None
 
-    # Run the scraper
-    # Note: This is blocking. In production, use Celery/Redis.
+    # Run the scraper (blocking — Gunicorn timeout is set to 300s)
     try:
         result = main.run_scraper(city, query_list=query_list, max_leads=max_leads)
         
@@ -56,9 +51,6 @@ def scrape():
                 "message": result['message']
             })
 
-    except TimeoutException:
-        print("Scraping timed out.")
-        return jsonify({"status": "error", "message": "Scraping timed out. Try reducing Max Leads."}), 504
     except Exception as e:
         print(f"Scraping error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -79,4 +71,5 @@ def download_file(filename):
         return "File not found", 404
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5002)
+    port = int(os.environ.get("PORT", 5002))
+    app.run(debug=True, host='0.0.0.0', port=port)
