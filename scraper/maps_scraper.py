@@ -46,6 +46,7 @@ class MapsScraper:
         self.driver = webdriver.Chrome(service=service, options=options)
         self.wait = WebDriverWait(self.driver, 20)
         self._search_success = False
+        self._last_query = ""
 
     def _dismiss_consent(self):
         """Dismiss Google cookie consent page that appears on data center IPs."""
@@ -99,6 +100,7 @@ class MapsScraper:
         return False
 
     def search(self, query):
+        self._last_query = query
         # Use consent-bypass parameters
         maps_url = 'https://www.google.com/maps?hl=en&consent=1'
         print(f"  [Nav] Opening Google Maps...")
@@ -203,12 +205,46 @@ class MapsScraper:
             print("Search was not successful. Skipping lead extraction.")
             return leads
         
+        feed = None
+        
+        # Attempt 1: Find the results feed on current page
         try:
-            # Locate the scrollable feed
-            # Usually strict role="feed"
-            feed = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div[role="feed"]')))
+            feed = WebDriverWait(self.driver, 15).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'div[role="feed"]'))
+            )
+            print("  [Feed] Results feed found.")
         except:
-            print("Could not find results feed.")
+            print("  [Feed] Results feed NOT found on current page.")
+        
+        # Attempt 2: If feed not found, try direct URL search
+        if feed is None and self._last_query:
+            print("  [Feed] Trying direct URL search as fallback...")
+            direct_url = f'https://www.google.com/maps/search/{self._last_query.replace(" ", "+")}?hl=en'
+            self.driver.get(direct_url)
+            time.sleep(8)
+            self._dismiss_consent()
+            time.sleep(3)
+            
+            try:
+                feed = WebDriverWait(self.driver, 15).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'div[role="feed"]'))
+                )
+                print("  [Feed] Direct URL fallback worked! Results feed found.")
+            except:
+                print("  [Feed] Direct URL also failed.")
+        
+        # If still no feed, save debug info and return empty
+        if feed is None:
+            print("  [Feed] FAILED - Could not find results feed. Saving debug screenshot...")
+            try:
+                self.driver.save_screenshot("output/debug_screenshot.png")
+                with open("output/debug_page.html", "w", encoding="utf-8") as f:
+                    f.write(self.driver.page_source)
+                print(f"  [Debug] Current URL: {self.driver.current_url}")
+                print(f"  [Debug] Page title: {self.driver.title}")
+                print(f"  [Debug] Visit /debug on your deployed app to see the screenshot")
+            except Exception as e:
+                print(f"  [Debug] Failed to save: {e}")
             return leads
 
         # Scroll loop with empty-scroll safety limit
