@@ -221,9 +221,10 @@ class MapsScraper:
                 print(">> STOP REQUESTED. Finishing current batch and exiting...")
                 break
             
-            # Re-find all items FRESH each iteration to avoid stale references
+            # Re-find all result links FRESH each iteration to avoid stale refs
+            # Google Maps uses <a class="hfpxzc"> with aria-label containing business name
             try:
-                items = self.driver.find_elements(By.CSS_SELECTOR, 'div[role="feed"] > div > div[role="article"]')
+                items = self.driver.find_elements(By.CSS_SELECTOR, 'div[role="feed"] a.hfpxzc')
             except Exception:
                 items = []
             
@@ -265,7 +266,6 @@ class MapsScraper:
                 target_item.click()
                 
                 # Wait for the detail panel to fully load
-                # The detail panel is loaded when the address or phone button appears
                 try:
                     WebDriverWait(self.driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, 
@@ -415,7 +415,7 @@ class MapsScraper:
                     back_btn = self.driver.find_element(By.CSS_SELECTOR, selector)
                     if back_btn.is_displayed():
                         back_btn.click()
-                        print("  ← Navigated back to results list")
+                        print("  <- Navigated back to results list")
                         # Wait for the feed to reappear
                         try:
                             WebDriverWait(self.driver, 10).until(
@@ -429,7 +429,7 @@ class MapsScraper:
             
             # Method 2: Use browser back
             self.driver.back()
-            print("  ← Used browser back to return to results")
+            print("  <- Used browser back to return to results")
             try:
                 WebDriverWait(self.driver, 10).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, 'div[role="feed"]'))
